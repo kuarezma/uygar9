@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Uygar Mama Takip</title>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin:0; padding:0;
+    font-family:'Quicksand',sans-serif;
+    background: linear-gradient(to bottom, #ffffff, #e0f7fa);
+    color:#333; text-align:center;
+  }
+  h1 { font-size:28px; color:#e53935; margin:15px 0; }
+  #clock { font-size:22px; font-weight:bold; margin-bottom:5px; }
+  #uygarAge { font-weight:bold; margin-bottom:10px; color:#00796b; }
+  /* Büyük butonlar */
+  #startBtn, #stopBtn {
+    padding:12px 18px; margin:6px;
+    font-size:16px; border:none; border-radius:8px;
+    cursor:pointer; font-weight:bold;
+    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    transition: transform 0.2s, background 0.3s;
+  }
+  #startBtn { background:#ff9800; color:#fff; }
+  #stopBtn { background:#e53935; color:#fff; }
+  /* Diğer butonlar küçük */
+  #goalSave, #toggleHistory, .edit-btn, .delete-btn, .add-btn {
+    padding:6px 8px; margin:2px;
+    font-size:12px; border:none; border-radius:6px;
+    cursor:pointer; font-weight:bold;
+    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    transition: transform 0.2s, background 0.3s;
+  }
+  button:disabled { opacity:0.5; cursor:default; }
+  button:hover:enabled { transform: scale(1.05); }
+  #goalSave { background:#8e24aa; color:#fff; }
+  #toggleHistory { background:#4caf50; color:#fff; }
+  .log {
+    max-height:300px; overflow-y:auto;
+    background: rgba(0,0,0,0.05);
+    margin:10px; padding:10px; border-radius:10px;
+  }
+  .log-entry {
+    display:flex; justify-content:space-between; align-items:center;
+    margin:4px 0; background: rgba(255,255,255,0.9);
+    border-radius:6px; padding:4px 6px; color:#222;
+    flex-wrap:nowrap; gap:4px;
+  }
+  .log-text {
+    flex:1; text-align:left; font-weight:bold;
+    font-size:13px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  .log-buttons {
+    display:flex; gap:3px; flex-shrink:0;
+  }
+  .delete-btn { background:#ff4081; color:#fff; }
+  .edit-btn { background:#2196f3; color:#fff; }
+  .add-btn { background:#4caf50; color:#fff; }
+  .status { margin:10px; font-weight:bold; background: rgba(0,0,0,0.05); padding:8px; border-radius:6px; }
+  .goal-input { margin:10px; }
+  .goal-input input {
+    padding:6px; font-size:16px; width:80px; text-align:center;
+    border:1px solid #ccc; border-radius:6px;
+  }
+  #waitTimer { color:#d32f2f; font-weight:bold; }
+  #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; }
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<h1>
+  <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:28px; vertical-align:middle; border-radius:50%; margin-right:5px;">
+  Uygar Mama Takip
+</h1>
+<div id="clock"></div>
+<div id="uygarAge"></div>
+<button id="startBtn">🍼 Mama Başladı</button>
+<button id="stopBtn" disabled>✅ Mama Bitti</button>
+<button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
+
+<div class="goal-input">
+  Günlük hedef:
+  <input type="number" id="goalInput" value="800"> ml
+  <button id="goalSave">Kaydet</button>
+</div>
+
+<div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
+<div class="status" id="goalStatus"></div>
+<div class="log" id="log"></div>
+
+<script>
+// Firebase config
+const firebaseConfig = {
+  databaseURL: "https://uygar-mama-takibi-default-rtdb.europe-west1.firebasedatabase.app/"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let waitInterval = null;
+let dailyGoal = 800;
+let showHistory = false;
+let allRecords = [];
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = "🕒 " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function updateUygarAge() {
+  const birth = new Date(2025, 4, 10, 13, 59);
+  const now = new Date();
+  const diffTime = now - birth;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const el = document.getElementById("uygarAge");
+  if(diffDays < 90){
+    el.textContent = `Uygar ${diffDays} günlük`;
+  } else {
+    const months = Math.floor(diffDays / 30);
+    el.textContent = `Uygar ${months} aylık`;
+  }
+}
+updateUygarAge();
+
+function formatDuration(ms) {
+  const s = Math.floor(ms/1000);
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const sec = s%60;
+  return `${h} saat ${m} dakika ${sec} saniye`;
+}
+
+db.ref("status").on("value", snap=>{
+  const state = snap.val() || "idle";
+  document.getElementById('startBtn').disabled = state==="feeding";
+  document.getElementById('stopBtn').disabled = state!=="feeding";
+});
+
+db.ref("waitStatus").on("value", snap=>{
+  const ts = snap.val();
+  if(ts){
+    const elapsed = Date.now() - ts;
+    updateTrafficLight(elapsed);
+    document.getElementById('waitTimer').textContent = `Bekleme Süresi: ${formatDuration(elapsed)}`;
+    if(waitInterval) clearInterval(waitInterval);
+    waitInterval = setInterval(()=>{
+      const nowElapsed = Date.now() - ts;
+      updateTrafficLight(nowElapsed);
+      document.getElementById('waitTimer').textContent = `Bekleme Süresi: ${formatDuration(nowElapsed)}`;
+    },1000);
+  } else {
+    if(waitInterval) clearInterval(waitInterval);
+    document.getElementById('waitTimer').textContent = "Bekleme Süresi: 0 saat 0 dakika 0 saniye";
+    updateTrafficLight(0);
+  }
+});
+
+function updateTrafficLight(ms) {
+  let color = "red";
+  const h = ms/3600000;
+  if(h>=2) color="green";
+  else if(h>=1) color="yellow";
+  document.getElementById('waitTimer').innerHTML += ` <span id="trafficLight" style="background:${color}"></span>`;
+}
+
+document.getElementById('toggleHistory').addEventListener('click', ()=>{
+  showHistory = !showHistory;
+  document.getElementById('toggleHistory').textContent = showHistory ? "📂 Geçmiş Kayıtları Gizle" : "📂 Geçmiş Kayıtları Göster";
+  renderLog();
+});
+
+db.ref("feedings").on("value", snapshot=>{
+  allRecords = [];
+  snapshot.forEach(child=>{
+    allRecords.push({...child.val(), key:child.key});
+  });
+  renderLog();
+});
+
+function renderLog() {
+  const log = document.getElementById('log');
+  log.innerHTML = "";
+  let todayTotal=0;
+  const todayStr = new Date().toLocaleDateString("tr-TR");
+  const filtered = allRecords.filter(r => showHistory || r.date === todayStr);
+  filtered.forEach(r=>{
+    if(r.date===todayStr) todayTotal+=r.ml||0;
+    const entry = document.createElement("div");
+    entry.className = "log-entry";
+
+    const text = document.createElement("div");
+    text.className = "log-text";
+    text.innerHTML = `<span style="color:red; font-weight:bold;">${r.time || ""}</span> - 🍼 <span style="font-weight:bold;">${r.ml || ""} ml</span>`;
+
+    const buttons = document.createElement("div");
+    buttons.className = "log-buttons";
+
+    const edit = document.createElement("button");
+    edit.className = "edit-btn";
+    edit.textContent = "Düzelt";
+    edit.onclick = () => {
+      let yeniMl = prompt("Yeni miktarı giriniz:", r.ml || "0");
+      if(yeniMl===null || yeniMl.trim()==="") return;
+      yeniMl=parseInt(yeniMl);
+      if(isNaN(yeniMl)) yeniMl=0;
+      db.ref("feedings/"+r.key).update({ml: yeniMl});
+    };
+
+    const add = document.createElement("button");
+    add.className = "add-btn";
+    add.textContent = "Ekle";
+    add.onclick = () => {
+      let saat = prompt("Mama saati (örn: 15:30):");
+      if(saat===null || saat.trim()==="") return;
+      let miktar = prompt("Uygar kaç ml içti?");
+      if(miktar===null || miktar.trim()==="") miktar="0";
+      miktar=parseInt(miktar);
+      if(isNaN(miktar)) miktar=0;
+      db.ref("feedings").push({
+        date: r.date,
+        time: saat,
+        ml: miktar
+      });
+    };
+
+    const del = document.createElement("button");
+    del.className = "delete-btn";
+    del.textContent = "Sil";
+    del.onclick = () => {
+      if(confirm("Kaydı silmek istediğinize emin misiniz?")){
+        db.ref("feedings/"+r.key).remove();
+      }
+    };
+
+    buttons.appendChild(edit);
+    buttons.appendChild(add);
+    buttons.appendChild(del);
+
+    entry.appendChild(text);
+    entry.appendChild(buttons);
+    log.appendChild(entry);
+  });
+
+  const kalan = dailyGoal - todayTotal;
+  const yuzdeTamam = Math.min(100, ((todayTotal / dailyGoal) * 100).toFixed(1));
+  document.getElementById('goalStatus').innerHTML = `Günlük hedef: ${dailyGoal} ml <span style="color:blue"> | </span> İçilen: ${todayTotal} ml <span style="color:blue"> | </span> Kalan: <span style="color:red">${kalan>0?kalan:0} ml</span> <span style="color:blue"> | </span> Tamamlanma: <strong>%${yuzdeTamam}</strong>`;
+}
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+  if(waitInterval) clearInterval(waitInterval);
+  document.getElementById('waitTimer').textContent="Bekleme Süresi: 0 saat 0 dakika 0 saniye";
+  db.ref("waitStatus").remove();
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  db.ref("status").set("feeding");
+});
+
+document.getElementById('stopBtn').addEventListener('click',()=>{
+  let waitStartTime=Date.now();
+  db.ref("waitStatus").set(waitStartTime);
+  waitInterval=setInterval(()=>{
+    db.ref("waitStatus").set(waitStartTime);
+  },1000);
+
+  let miktar = prompt("Uygar kaç ml içti?", "0");
+  if(miktar===null || miktar.trim()==="") miktar="0";
+  miktar=parseInt(miktar);
+  if(isNaN(miktar)) miktar=0;
+
+  db.ref("feedings").push({
+    date: new Date().toLocaleDateString("tr-TR"),
+    time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+    ml: miktar
+  });
+
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  db.ref("status").set("waiting");
+});
+
+document.getElementById('goalSave').addEventListener('click',()=>{
+  const yeni=document.getElementById('goalInput').value;
+  if(yeni && !isNaN(yeni)){
+    dailyGoal=parseInt(yeni);
+  }
+});
+</script>
+</body>
+</html>
