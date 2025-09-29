@@ -6,27 +6,11 @@
 <title>Uygar Mama Takip</title>
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500&display=swap" rel="stylesheet">
 <style>
-  * {
-    box-sizing: border-box;
-  }
   html, body {
     margin:0; padding:0;
     font-family:'Quicksand',sans-serif;
     background: linear-gradient(to bottom, #ffffff, #e0f7fa);
     color:#333; text-align:center;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-  body {
-    padding: 10px;
-  }
-  .container {
-    max-width: 480px;
-    margin: 0 auto;
-    background: #fff;
-    padding: 15px;
-    border-radius: 15px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
   }
   h1 { font-size:28px; color:#e53935; margin:15px 0; }
   #clock { font-size:22px; font-weight:bold; margin-bottom:5px; }
@@ -43,7 +27,7 @@
   #stopBtn { background:#e53935; color:#fff; }
   /* Diğer butonlar küçük */
   #goalSave, #toggleHistory, .edit-btn, .delete-btn, .add-btn {
-    padding:8px 12px; margin:4px;
+    padding:6px 8px; margin:2px;
     font-size:12px; border:none; border-radius:6px;
     cursor:pointer; font-weight:bold;
     box-shadow:0 2px 4px rgba(0,0,0,0.2);
@@ -84,7 +68,7 @@
   #waitTimer { color:#d32f2f; font-weight:bold; }
   #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; vertical-align: middle; }
 
-  /* Modal Styles */
+  /* YENİ: Modal (Açılır Pencere) Stilleri */
   .modal-hidden { display: none !important; }
   #modal-overlay {
     position: fixed; top: 0; left: 0;
@@ -93,6 +77,7 @@
     justify-content: center; align-items: center;
     display: flex; z-index: 1000;
     padding: 15px;
+    box-sizing: border-box;
   }
   #modal-content {
     background: #fff; padding: 20px;
@@ -101,13 +86,14 @@
     width: 100%; max-width: 320px;
     text-align: center;
   }
-  #modal-title { margin-top: 0; color: #e53935; }
-  #modal-text { margin-top: 0; margin-bottom: 15px; }
+  #modal-title { margin-top: 0; color: #e53935; font-size: 22px; }
+  #modal-text { margin-top: 0; margin-bottom: 15px; font-size: 16px; }
   #modal-input-container input {
     width: 100%;
     padding: 10px; margin-bottom: 15px;
     border: 1px solid #ccc; border-radius: 8px;
     font-size: 16px; text-align: center;
+    box-sizing: border-box;
   }
   #modal-buttons button {
     padding: 10px 20px; font-size: 16px;
@@ -123,28 +109,27 @@
 </head>
 <body>
 
-<div class="container">
-  <h1>
-    <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:28px; vertical-align:middle; border-radius:50%; margin-right:5px;">
-    Uygar Mama Takip
-  </h1>
-  <div id="clock"></div>
-  <div id="uygarAge"></div>
-  <button id="startBtn">🍼 Mama Başladı</button>
-  <button id="stopBtn" disabled>✅ Mama Bitti</button>
-  <button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
+<h1>
+  <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:28px; vertical-align:middle; border-radius:50%; margin-right:5px;">
+  Uygar Mama Takip
+</h1>
+<div id="clock"></div>
+<div id="uygarAge"></div>
+<button id="startBtn">🍼 Mama Başladı</button>
+<button id="stopBtn" disabled>✅ Mama Bitti</button>
+<button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
 
-  <div class="goal-input">
-    Günlük hedef:
-    <input type="number" id="goalInput" value="800"> ml
-    <button id="goalSave">Kaydet</button>
-  </div>
-
-  <div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
-  <div class="status" id="goalStatus"></div>
-  <div class="log" id="log"></div>
+<div class="goal-input">
+  Günlük hedef:
+  <input type="number" id="goalInput" value="800"> ml
+  <button id="goalSave">Kaydet</button>
 </div>
 
+<div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
+<div class="status" id="goalStatus"></div>
+<div class="log" id="log"></div>
+
+<!-- YENİ: Modal HTML Yapısı -->
 <div id="modal-overlay" class="modal-hidden">
   <div id="modal-content">
     <h2 id="modal-title"></h2>
@@ -153,7 +138,6 @@
     <div id="modal-buttons"></div>
   </div>
 </div>
-
 
 <script>
 // Firebase config
@@ -164,17 +148,16 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let waitInterval = null;
-let dailyGoal = 800;
+let dailyGoal = 800; 
 let showHistory = false;
 let allRecords = [];
 
-// Modal Elements
+// YENİ: Modal elementleri ve fonksiyonu
 const modalOverlay = document.getElementById('modal-overlay');
 const modalTitle = document.getElementById('modal-title');
 const modalText = document.getElementById('modal-text');
 const modalInputContainer = document.getElementById('modal-input-container');
 const modalButtons = document.getElementById('modal-buttons');
-
 
 function showModal({ title, text, inputs = [], buttons = [] }) {
     return new Promise((resolve) => {
@@ -190,7 +173,7 @@ function showModal({ title, text, inputs = [], buttons = [] }) {
             input.placeholder = inputConfig.placeholder || '';
             input.value = inputConfig.value || '';
             if (inputConfig.type === 'number') {
-                input.pattern = '\\d*'; // For numeric keyboard on mobile
+                input.pattern = '\\d*';
             }
             modalInputContainer.appendChild(input);
         });
@@ -220,7 +203,6 @@ function showModal({ title, text, inputs = [], buttons = [] }) {
     });
 }
 
-
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent = "🕒 " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -229,7 +211,7 @@ setInterval(updateClock, 1000);
 updateClock();
 
 function updateUygarAge() {
-  const birth = new Date(2025, 4, 10, 13, 59); // Ay indeksi 0'dan başlar, Mayıs için 4 kullanılır.
+  const birth = new Date(2025, 4, 10, 13, 59);
   const now = new Date();
   const diffTime = now - birth;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -282,7 +264,6 @@ db.ref("dailyGoal").on("value", snap => {
     renderLog();
 });
 
-
 function updateTrafficLight(ms) {
   let color = "red";
   const h = ms / 3600000;
@@ -297,7 +278,6 @@ function updateTrafficLight(ms) {
   }
   lightEl.style.background = color;
 }
-
 
 document.getElementById('toggleHistory').addEventListener('click', ()=>{
   showHistory = !showHistory;
@@ -337,6 +317,7 @@ function renderLog() {
     const edit = document.createElement("button");
     edit.className = "edit-btn";
     edit.textContent = "Düzelt";
+    // GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
     edit.onclick = async () => {
       const result = await showModal({
           title: 'Miktarı Düzelt',
@@ -355,6 +336,7 @@ function renderLog() {
     const add = document.createElement("button");
     add.className = "add-btn";
     add.textContent = "Ekle";
+    // GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
     add.onclick = async () => {
       const defaultTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const result = await showModal({
@@ -368,7 +350,6 @@ function renderLog() {
               { text: 'İptal', class: 'cancel-btn' }
           ]
       });
-
       if (result.button === 'Ekle' && result.timeInput) {
           let miktar = parseInt(result.mlAddInput) || 0;
           db.ref("feedings").push({
@@ -380,6 +361,7 @@ function renderLog() {
     const del = document.createElement("button");
     del.className = "delete-btn";
     del.textContent = "Sil";
+    // GÜNCELLEME: 'confirm' yerine 'showModal' kullanılıyor
     del.onclick = async () => {
       const result = await showModal({
           title: 'Kaydı Sil',
@@ -417,10 +399,10 @@ document.getElementById('startBtn').addEventListener('click',()=>{
   db.ref("status").set("feeding");
 });
 
+// GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
 document.getElementById('stopBtn').addEventListener('click', async ()=>{
   let waitStartTime=Date.now();
-  db.ref("waitStatus").set(waitStartTime);
-
+  
   const result = await showModal({
     title: 'Mama Miktarı',
     text: 'Uygar kaç ml içti?',
@@ -432,10 +414,10 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
   });
   
   if (result.button === 'İptal') {
-      db.ref("waitStatus").remove(); // Cancelled by user
-      return;
+      return; // Kullanıcı iptal etti, işlemi durdur.
   }
   
+  db.ref("waitStatus").set(waitStartTime); // Sadece kaydet'e basılınca bekleme süresini başlat
   let miktar = parseInt(result.mlInput) || 0;
 
   db.ref("feedings").push({
@@ -463,4 +445,5 @@ document.getElementById('goalSave').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
 
