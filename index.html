@@ -66,7 +66,7 @@
     border:1px solid #ccc; border-radius:6px;
   }
   #waitTimer { color:#d32f2f; font-weight:bold; }
-  #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; }
+  #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; vertical-align: middle; }
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
@@ -102,7 +102,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let waitInterval = null;
-let dailyGoal = 800;
+let dailyGoal = 800; // Varsayılan hedef, Firebase'den gelen veriyle güncellenecek
 let showHistory = false;
 let allRecords = [];
 
@@ -114,7 +114,7 @@ setInterval(updateClock, 1000);
 updateClock();
 
 function updateUygarAge() {
-  const birth = new Date(2025, 4, 10, 13, 59);
+  const birth = new Date(2025, 4, 10, 13, 59); // Ay indeksi 0'dan başlar, Mayıs için 4 kullanılır.
   const now = new Date();
   const diffTime = now - birth;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -145,14 +145,11 @@ db.ref("status").on("value", snap=>{
 db.ref("waitStatus").on("value", snap=>{
   const ts = snap.val();
   if(ts){
-    const elapsed = Date.now() - ts;
-    updateTrafficLight(elapsed);
-    document.getElementById('waitTimer').textContent = `Bekleme Süresi: ${formatDuration(elapsed)}`;
     if(waitInterval) clearInterval(waitInterval);
     waitInterval = setInterval(()=>{
       const nowElapsed = Date.now() - ts;
-      updateTrafficLight(nowElapsed);
       document.getElementById('waitTimer').textContent = `Bekleme Süresi: ${formatDuration(nowElapsed)}`;
+      updateTrafficLight(nowElapsed);
     },1000);
   } else {
     if(waitInterval) clearInterval(waitInterval);
@@ -161,13 +158,32 @@ db.ref("waitStatus").on("value", snap=>{
   }
 });
 
+// YENİ: Günlük hedefi Firebase'den yükle ve değişiklikleri dinle
+db.ref("dailyGoal").on("value", snap => {
+    const goalFromDb = snap.val();
+    if (goalFromDb !== null && !isNaN(goalFromDb)) {
+        dailyGoal = parseInt(goalFromDb);
+        document.getElementById('goalInput').value = dailyGoal;
+    }
+    renderLog(); // Hedef değiştiğinde durumu yeniden hesapla
+});
+
+
 function updateTrafficLight(ms) {
   let color = "red";
-  const h = ms/3600000;
-  if(h>=2) color="green";
-  else if(h>=1) color="yellow";
-  document.getElementById('waitTimer').innerHTML += ` <span id="trafficLight" style="background:${color}"></span>`;
+  const h = ms / 3600000;
+  if(h >= 2.5) color = "green";
+  else if(h >= 2) color = "yellow";
+  
+  const timerEl = document.getElementById('waitTimer');
+  let lightEl = document.getElementById('trafficLight');
+  if (!lightEl) {
+    timerEl.innerHTML += ` <span id="trafficLight"></span>`;
+    lightEl = document.getElementById('trafficLight');
+  }
+  lightEl.style.background = color;
 }
+
 
 document.getElementById('toggleHistory').addEventListener('click', ()=>{
   showHistory = !showHistory;
@@ -180,6 +196,7 @@ db.ref("feedings").on("value", snapshot=>{
   snapshot.forEach(child=>{
     allRecords.push({...child.val(), key:child.key});
   });
+  allRecords.reverse(); // GÜNCELLEME: En yeni kayıtların üstte görünmesi için diziyi ters çevir
   renderLog();
 });
 
@@ -189,6 +206,7 @@ function renderLog() {
   let todayTotal=0;
   const todayStr = new Date().toLocaleDateString("tr-TR");
   const filtered = allRecords.filter(r => showHistory || r.date === todayStr);
+  
   filtered.forEach(r=>{
     if(r.date===todayStr) todayTotal+=r.ml||0;
     const entry = document.createElement("div");
@@ -196,7 +214,8 @@ function renderLog() {
 
     const text = document.createElement("div");
     text.className = "log-text";
-    text.innerHTML = `<span style="color:red; font-weight:bold;">${r.time || ""}</span> - 🍼 <span style="font-weight:bold;">${r.ml || ""} ml</span>`;
+    const dateText = showHistory && r.date !== todayStr ? `[${r.date}] ` : "";
+    text.innerHTML = `${dateText}<span style="color:red; font-weight:bold;">${r.time || ""}</span> - 🍼 <span style="font-weight:bold;">${r.ml || ""} ml</span>`;
 
     const buttons = document.createElement("div");
     buttons.className = "log-buttons";
@@ -248,7 +267,7 @@ function renderLog() {
   });
 
   const kalan = dailyGoal - todayTotal;
-  const yuzdeTamam = Math.min(100, ((todayTotal / dailyGoal) * 100).toFixed(1));
+  const yuzdeTamam = dailyGoal > 0 ? Math.min(100, ((todayTotal / dailyGoal) * 100).toFixed(1)) : 0;
   document.getElementById('goalStatus').innerHTML = `Günlük hedef: ${dailyGoal} ml <span style="color:blue"> | </span> İçilen: ${todayTotal} ml <span style="color:blue"> | </span> Kalan: <span style="color:red">${kalan>0?kalan:0} ml</span> <span style="color:blue"> | </span> Tamamlanma: <strong>%${yuzdeTamam}</strong>`;
 }
 
@@ -264,9 +283,6 @@ document.getElementById('startBtn').addEventListener('click',()=>{
 document.getElementById('stopBtn').addEventListener('click',()=>{
   let waitStartTime=Date.now();
   db.ref("waitStatus").set(waitStartTime);
-  waitInterval=setInterval(()=>{
-    db.ref("waitStatus").set(waitStartTime);
-  },1000);
 
   let miktar = prompt("Uygar kaç ml içti?", "0");
   if(miktar===null || miktar.trim()==="") miktar="0";
@@ -284,10 +300,17 @@ document.getElementById('stopBtn').addEventListener('click',()=>{
   db.ref("status").set("waiting");
 });
 
+// GÜNCELLEME: Kaydet butonunun hedefi Firebase'e yazmasını sağla
 document.getElementById('goalSave').addEventListener('click',()=>{
-  const yeni=document.getElementById('goalInput').value;
+  const yeni = document.getElementById('goalInput').value;
   if(yeni && !isNaN(yeni)){
-    dailyGoal=parseInt(yeni);
+    const newGoal = parseInt(yeni);
+    db.ref("dailyGoal").set(newGoal); // Hedefi Firebase'e kaydet
+    
+    // Kullanıcıya geri bildirim ver
+    const btn = document.getElementById('goalSave');
+    btn.textContent = 'Kaydedildi!';
+    setTimeout(() => { btn.textContent = 'Kaydet'; }, 1500);
   }
 });
 </script>
