@@ -6,11 +6,27 @@
 <title>Uygar Mama Takip</title>
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500&display=swap" rel="stylesheet">
 <style>
+  * {
+    box-sizing: border-box;
+  }
   html, body {
     margin:0; padding:0;
     font-family:'Quicksand',sans-serif;
     background: linear-gradient(to bottom, #ffffff, #e0f7fa);
     color:#333; text-align:center;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    padding: 10px;
+  }
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 15px;
+    border-radius: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
   }
   h1 { font-size:28px; color:#e53935; margin:15px 0; }
   #clock { font-size:22px; font-weight:bold; margin-bottom:5px; }
@@ -27,7 +43,7 @@
   #stopBtn { background:#e53935; color:#fff; }
   /* Diğer butonlar küçük */
   #goalSave, #toggleHistory, .edit-btn, .delete-btn, .add-btn {
-    padding:6px 8px; margin:2px;
+    padding:8px 12px; margin:4px;
     font-size:12px; border:none; border-radius:6px;
     cursor:pointer; font-weight:bold;
     box-shadow:0 2px 4px rgba(0,0,0,0.2);
@@ -67,31 +83,77 @@
   }
   #waitTimer { color:#d32f2f; font-weight:bold; }
   #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; vertical-align: middle; }
+
+  /* Modal Styles */
+  .modal-hidden { display: none !important; }
+  #modal-overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    justify-content: center; align-items: center;
+    display: flex; z-index: 1000;
+    padding: 15px;
+  }
+  #modal-content {
+    background: #fff; padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    width: 100%; max-width: 320px;
+    text-align: center;
+  }
+  #modal-title { margin-top: 0; color: #e53935; }
+  #modal-text { margin-top: 0; margin-bottom: 15px; }
+  #modal-input-container input {
+    width: 100%;
+    padding: 10px; margin-bottom: 15px;
+    border: 1px solid #ccc; border-radius: 8px;
+    font-size: 16px; text-align: center;
+  }
+  #modal-buttons button {
+    padding: 10px 20px; font-size: 16px;
+    border: none; border-radius: 8px;
+    cursor: pointer; margin: 0 5px;
+    font-weight: bold;
+  }
+  #modal-buttons .confirm-btn { background: #4caf50; color: white; }
+  #modal-buttons .cancel-btn { background: #f44336; color: white; }
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
 <body>
 
-<h1>
-  <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:28px; vertical-align:middle; border-radius:50%; margin-right:5px;">
-  Uygar Mama Takip
-</h1>
-<div id="clock"></div>
-<div id="uygarAge"></div>
-<button id="startBtn">🍼 Mama Başladı</button>
-<button id="stopBtn" disabled>✅ Mama Bitti</button>
-<button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
+<div class="container">
+  <h1>
+    <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:28px; vertical-align:middle; border-radius:50%; margin-right:5px;">
+    Uygar Mama Takip
+  </h1>
+  <div id="clock"></div>
+  <div id="uygarAge"></div>
+  <button id="startBtn">🍼 Mama Başladı</button>
+  <button id="stopBtn" disabled>✅ Mama Bitti</button>
+  <button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
 
-<div class="goal-input">
-  Günlük hedef:
-  <input type="number" id="goalInput" value="800"> ml
-  <button id="goalSave">Kaydet</button>
+  <div class="goal-input">
+    Günlük hedef:
+    <input type="number" id="goalInput" value="800"> ml
+    <button id="goalSave">Kaydet</button>
+  </div>
+
+  <div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
+  <div class="status" id="goalStatus"></div>
+  <div class="log" id="log"></div>
 </div>
 
-<div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
-<div class="status" id="goalStatus"></div>
-<div class="log" id="log"></div>
+<div id="modal-overlay" class="modal-hidden">
+  <div id="modal-content">
+    <h2 id="modal-title"></h2>
+    <p id="modal-text"></p>
+    <div id="modal-input-container"></div>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
+
 
 <script>
 // Firebase config
@@ -102,9 +164,62 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let waitInterval = null;
-let dailyGoal = 800; // Varsayılan hedef, Firebase'den gelen veriyle güncellenecek
+let dailyGoal = 800;
 let showHistory = false;
 let allRecords = [];
+
+// Modal Elements
+const modalOverlay = document.getElementById('modal-overlay');
+const modalTitle = document.getElementById('modal-title');
+const modalText = document.getElementById('modal-text');
+const modalInputContainer = document.getElementById('modal-input-container');
+const modalButtons = document.getElementById('modal-buttons');
+
+
+function showModal({ title, text, inputs = [], buttons = [] }) {
+    return new Promise((resolve) => {
+        modalTitle.textContent = title || '';
+        modalText.textContent = text || '';
+        modalText.style.display = text ? 'block' : 'none';
+        
+        modalInputContainer.innerHTML = '';
+        inputs.forEach(inputConfig => {
+            const input = document.createElement('input');
+            input.type = inputConfig.type || 'text';
+            input.id = inputConfig.id;
+            input.placeholder = inputConfig.placeholder || '';
+            input.value = inputConfig.value || '';
+            if (inputConfig.type === 'number') {
+                input.pattern = '\\d*'; // For numeric keyboard on mobile
+            }
+            modalInputContainer.appendChild(input);
+        });
+
+        modalButtons.innerHTML = '';
+        buttons.forEach(buttonConfig => {
+            const button = document.createElement('button');
+            button.textContent = buttonConfig.text;
+            button.className = buttonConfig.class;
+            button.onclick = () => {
+                const result = {};
+                if (inputs.length > 0) {
+                    inputs.forEach(inputConfig => {
+                        result[inputConfig.id] = document.getElementById(inputConfig.id).value;
+                    });
+                }
+                modalOverlay.classList.add('modal-hidden');
+                resolve({ button: buttonConfig.text, ...result });
+            };
+            modalButtons.appendChild(button);
+        });
+
+        modalOverlay.classList.remove('modal-hidden');
+        if (inputs.length > 0) {
+            document.getElementById(inputs[0].id).focus();
+        }
+    });
+}
+
 
 function updateClock() {
   const now = new Date();
@@ -158,14 +273,13 @@ db.ref("waitStatus").on("value", snap=>{
   }
 });
 
-// YENİ: Günlük hedefi Firebase'den yükle ve değişiklikleri dinle
 db.ref("dailyGoal").on("value", snap => {
     const goalFromDb = snap.val();
     if (goalFromDb !== null && !isNaN(goalFromDb)) {
         dailyGoal = parseInt(goalFromDb);
         document.getElementById('goalInput').value = dailyGoal;
     }
-    renderLog(); // Hedef değiştiğinde durumu yeniden hesapla
+    renderLog();
 });
 
 
@@ -196,7 +310,7 @@ db.ref("feedings").on("value", snapshot=>{
   snapshot.forEach(child=>{
     allRecords.push({...child.val(), key:child.key});
   });
-  allRecords.reverse(); // GÜNCELLEME: En yeni kayıtların üstte görünmesi için diziyi ters çevir
+  allRecords.reverse();
   renderLog();
 });
 
@@ -223,37 +337,60 @@ function renderLog() {
     const edit = document.createElement("button");
     edit.className = "edit-btn";
     edit.textContent = "Düzelt";
-    edit.onclick = () => {
-      let yeniMl = prompt("Yeni miktarı giriniz:", r.ml || "0");
-      if(yeniMl===null || yeniMl.trim()==="") return;
-      yeniMl=parseInt(yeniMl);
-      if(isNaN(yeniMl)) yeniMl=0;
-      db.ref("feedings/"+r.key).update({ml: yeniMl});
+    edit.onclick = async () => {
+      const result = await showModal({
+          title: 'Miktarı Düzelt',
+          inputs: [{ id: 'mlEditInput', type: 'number', value: r.ml || '0' }],
+          buttons: [
+              { text: 'Güncelle', class: 'confirm-btn' },
+              { text: 'İptal', class: 'cancel-btn' }
+          ]
+      });
+      if (result.button === 'Güncelle') {
+        let yeniMl=parseInt(result.mlEditInput) || 0;
+        db.ref("feedings/"+r.key).update({ml: yeniMl});
+      }
     };
 
     const add = document.createElement("button");
     add.className = "add-btn";
     add.textContent = "Ekle";
-    add.onclick = () => {
-      let saat = prompt("Mama saati (örn: 15:30):");
-      if(saat===null || saat.trim()==="") return;
-      let miktar = prompt("Uygar kaç ml içti?");
-      if(miktar===null || miktar.trim()==="") miktar="0";
-      miktar=parseInt(miktar);
-      if(isNaN(miktar)) miktar=0;
-      db.ref("feedings").push({
-        date: r.date,
-        time: saat,
-        ml: miktar
+    add.onclick = async () => {
+      const defaultTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const result = await showModal({
+          title: 'Manuel Kayıt Ekle',
+          inputs: [
+              { id: 'timeInput', type: 'text', value: defaultTime, placeholder: 'Saat (örn: 15:30)' },
+              { id: 'mlAddInput', type: 'number', value: '', placeholder: 'Miktar (ml)' }
+          ],
+          buttons: [
+              { text: 'Ekle', class: 'confirm-btn' },
+              { text: 'İptal', class: 'cancel-btn' }
+          ]
       });
+
+      if (result.button === 'Ekle' && result.timeInput) {
+          let miktar = parseInt(result.mlAddInput) || 0;
+          db.ref("feedings").push({
+              date: r.date, time: result.timeInput, ml: miktar
+          });
+      }
     };
 
     const del = document.createElement("button");
     del.className = "delete-btn";
     del.textContent = "Sil";
-    del.onclick = () => {
-      if(confirm("Kaydı silmek istediğinize emin misiniz?")){
-        db.ref("feedings/"+r.key).remove();
+    del.onclick = async () => {
+      const result = await showModal({
+          title: 'Kaydı Sil',
+          text: 'Bu kaydı silmek istediğinize emin misiniz?',
+          buttons: [
+              { text: 'Evet, Sil', class: 'cancel-btn' },
+              { text: 'Hayır', class: 'confirm-btn' }
+          ]
+      });
+      if (result.button === 'Evet, Sil') {
+          db.ref("feedings/" + r.key).remove();
       }
     };
 
@@ -280,14 +417,26 @@ document.getElementById('startBtn').addEventListener('click',()=>{
   db.ref("status").set("feeding");
 });
 
-document.getElementById('stopBtn').addEventListener('click',()=>{
+document.getElementById('stopBtn').addEventListener('click', async ()=>{
   let waitStartTime=Date.now();
   db.ref("waitStatus").set(waitStartTime);
 
-  let miktar = prompt("Uygar kaç ml içti?", "0");
-  if(miktar===null || miktar.trim()==="") miktar="0";
-  miktar=parseInt(miktar);
-  if(isNaN(miktar)) miktar=0;
+  const result = await showModal({
+    title: 'Mama Miktarı',
+    text: 'Uygar kaç ml içti?',
+    inputs: [{ id: 'mlInput', type: 'number', value: '120', placeholder: 'ml' }],
+    buttons: [
+        { text: 'Kaydet', class: 'confirm-btn' },
+        { text: 'İptal', class: 'cancel-btn' }
+    ]
+  });
+  
+  if (result.button === 'İptal') {
+      db.ref("waitStatus").remove(); // Cancelled by user
+      return;
+  }
+  
+  let miktar = parseInt(result.mlInput) || 0;
 
   db.ref("feedings").push({
     date: new Date().toLocaleDateString("tr-TR"),
@@ -300,14 +449,12 @@ document.getElementById('stopBtn').addEventListener('click',()=>{
   db.ref("status").set("waiting");
 });
 
-// GÜNCELLEME: Kaydet butonunun hedefi Firebase'e yazmasını sağla
 document.getElementById('goalSave').addEventListener('click',()=>{
   const yeni = document.getElementById('goalInput').value;
   if(yeni && !isNaN(yeni)){
     const newGoal = parseInt(yeni);
-    db.ref("dailyGoal").set(newGoal); // Hedefi Firebase'e kaydet
+    db.ref("dailyGoal").set(newGoal);
     
-    // Kullanıcıya geri bildirim ver
     const btn = document.getElementById('goalSave');
     btn.textContent = 'Kaydedildi!';
     setTimeout(() => { btn.textContent = 'Kaydet'; }, 1500);
@@ -316,3 +463,4 @@ document.getElementById('goalSave').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
