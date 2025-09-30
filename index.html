@@ -19,23 +19,29 @@
     align-items: center;
     margin: 15px 0 5px 0;
     position: relative;
-    padding-left: 85px; /* İkonun kapladığı alanı dengelemek için ve başlığı sağa kaydırmak için güncellendi */
+    padding-left: 105px; /* İkon büyüdüğü için dengeyi korumak amacıyla güncellendi */
     box-sizing: border-box;
   }
   #header-icon {
-    height: 72px;
+    height: 84px; /* Boyutu büyütüldü */
     border-radius: 50%;
     position: absolute;
     left: 15px;
-    top: 50%;
+    top: 55%; /* Biraz aşağı kaydırıldı */
     transform: translateY(-50%);
   }
   #title-container {
     text-align: center;
   }
   h1 { font-size:28px; color:#e53935; margin: 0; }
-  #clock { font-size:26px; font-weight:900; margin: 0 auto 5px; }
-  #uygarAge { font-weight:bold; margin-bottom:10px; color:#00796b; }
+  #clock { font-size:26px; font-weight:900; margin: 0; }
+  #uygarAge {
+    font-weight:bold;
+    margin-bottom:10px;
+    color:#00796b;
+    text-align: right;
+    padding-right: 15px;
+  }
   /* Büyük butonlar */
   #startBtn, #stopBtn {
     padding:12px 18px; margin:6px;
@@ -143,9 +149,9 @@
   <img src="https://i.imgur.com/wKpbz6H.jpg" id="header-icon">
   <div id="title-container">
     <h1>Uygar Mama Takip</h1>
+    <div id="clock"></div>
   </div>
 </div>
-<div id="clock"></div>
 <div id="uygarAge"></div>
 <button id="startBtn">🍼 Mama Başladı</button>
 <button id="stopBtn" disabled>✅ Mama Bitti</button>
@@ -373,36 +379,33 @@ document.getElementById('toggleHistory').addEventListener('click', ()=>{
   renderLog();
 });
 
+// GÜNCELLENDİ: Bu bölüm artık waitStatus ve bildirimleri merkezi olarak yönetiyor.
 db.ref("feedings").on("value", snapshot=>{
   allRecords = [];
   snapshot.forEach(child=>{
     allRecords.push({...child.val(), key:child.key});
   });
   
-  // HATA DÜZELTME: Zaman damgası (timestamp) işleme ve sıralama mantığı iyileştirildi.
   allRecords.forEach(r => {
-      // Eğer veritabanından timestamp gelmiyorsa (eski kayıtlar için), tarih ve saatten hesapla.
       if (!r.timestamp && r.date && r.time && r.date.includes('.') && r.time.includes(':')) {
         const dateParts = r.date.split('.');
         const timeParts = r.time.split(':');
-        // Tarih formatının (GG.AA.YYYY) doğru olduğunu varsayarak
         if (dateParts.length === 3 && timeParts.length >= 2) {
             r.timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
         }
       }
-      // Geçersiz veya eksik veri durumunda sıralamada sorun olmaması için 0 ata.
-      if (!r.timestamp) {
-          r.timestamp = 0;
-      }
+      if (!r.timestamp) r.timestamp = 0;
   });
 
-  // Kayıtları her zaman en yeniden en eskiye sırala.
   allRecords.sort((a, b) => b.timestamp - a.timestamp); 
   
+  // MERKEZİ YÖNETİM: Bekleme süresi ve bildirimler en son kayda göre ayarlanır.
   if (allRecords.length > 0) {
+      db.ref('waitStatus').set(allRecords[0].timestamp); // Sayacı en son kayda göre ayarla
       scheduleNotification(allRecords[0].timestamp, allRecords[0].ml);
   } else {
-      scheduleNotification(null, 0); // Kayıt yoksa bekleyen bildirimi iptal et
+      db.ref('waitStatus').remove(); // Hiç kayıt yoksa sayacı kaldır
+      scheduleNotification(null, 0); 
   }
   
   renderLog();
@@ -482,19 +485,13 @@ function renderLog() {
           const timeParts = result.timeInput.split(':');
           const manualEntryTimestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
 
-          const lastRecordTimestamp = allRecords.length > 0 ? allRecords[0].timestamp : 0;
-          
-          // HATA DÜZELTME: Kayda zaman damgasını (timestamp) ekle
           db.ref("feedings").push({
               date: entryDate, 
               time: result.timeInput, 
               ml: miktar,
               timestamp: manualEntryTimestamp
           });
-
-          if (manualEntryTimestamp > lastRecordTimestamp) {
-              db.ref("waitStatus").set(manualEntryTimestamp);
-          }
+          // GÜNCELLENDİ: waitStatus güncellemesi buradan kaldırıldı. Merkezi dinleyici yönetecek.
       }
     };
 
@@ -511,18 +508,8 @@ function renderLog() {
           ]
       });
       if (result.button === 'Evet, Sil') {
-          const isDeletingLastRecord = allRecords.length > 0 && allRecords[0].key === r.key;
-          
-          db.ref("feedings/" + r.key).remove().then(() => {
-              if (isDeletingLastRecord) {
-                  const newLastRecord = allRecords.length > 1 ? allRecords[1] : null;
-                  if (newLastRecord) {
-                      db.ref("waitStatus").set(newLastRecord.timestamp);
-                  } else {
-                      db.ref("waitStatus").remove();
-                  }
-              }
-          });
+        // GÜNCELLENDİ: waitStatus güncellemesi buradan kaldırıldı. Merkezi dinleyici yönetecek.
+        db.ref("feedings/" + r.key).remove();
       }
     };
 
@@ -621,12 +608,11 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
   }
   
   const now = new Date();
-  const timestamp = now.getTime(); // HATA DÜZELTME: Doğrudan timestamp al
+  const timestamp = now.getTime();
   let miktar = parseInt(result.mlInput) || 0;
 
-  db.ref("waitStatus").set(timestamp); 
+  // GÜNCELLENDİ: waitStatus güncellemesi buradan kaldırıldı. Merkezi dinleyici yönetecek.
   
-  // HATA DÜZELTME: Kayda zaman damgasını (timestamp) ekle
   db.ref("feedings").push({
     date: now.toLocaleDateString("tr-TR"),
     time: now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
