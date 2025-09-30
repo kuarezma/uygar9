@@ -13,8 +13,26 @@
     background: linear-gradient(to bottom, #ffffff, #e0f7fa);
     color:#333; text-align:center;
   }
-  h1 { font-size:28px; color:#e53935; margin:15px 0; }
-  #clock { font-size:26px; font-weight:900; margin-bottom:5px; }
+  .header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 15px 0;
+    position: relative;
+  }
+  #header-icon {
+    height: 72px;
+    border-radius: 50%;
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  #title-container {
+    text-align: center;
+  }
+  h1 { font-size:28px; color:#e53935; margin: 0; }
+  #clock { font-size:26px; font-weight:900; margin: 0; }
   #uygarAge { font-weight:bold; margin-bottom:10px; color:#00796b; }
   /* Büyük butonlar */
   #startBtn, #stopBtn {
@@ -119,11 +137,13 @@
 </head>
 <body>
 
-<h1>
-  <img src="https://i.imgur.com/wKpbz6H.jpg" style="height:36px; vertical-align:middle; border-radius:50%; margin-right:5px;">
-  Uygar Mama Takip
-</h1>
-<div id="clock"></div>
+<div class="header">
+  <img src="https://i.imgur.com/wKpbz6H.jpg" id="header-icon">
+  <div id="title-container">
+    <h1>Uygar Mama Takip</h1>
+    <div id="clock"></div>
+  </div>
+</div>
 <div id="uygarAge"></div>
 <button id="startBtn">🍼 Mama Başladı</button>
 <button id="stopBtn" disabled>✅ Mama Bitti</button>
@@ -626,5 +646,8 @@ document.getElementById('goalSave').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
+
+
 
 
