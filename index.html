@@ -228,7 +228,6 @@ function requestNotificationPermission() {
     Notification.requestPermission().then(permission => {
         updateNotificationButton();
         if (permission === 'granted') {
-            // İzin verildiğinde, mevcut son kayda göre bildirimi hemen zamanla
             if (allRecords.length > 0) {
                 scheduleNotification(allRecords[0].timestamp, allRecords[0].ml);
             }
@@ -236,7 +235,6 @@ function requestNotificationPermission() {
     });
 }
 
-// GÜNCELLENDİ: Bildirim Zamanlama Mantığı
 function scheduleNotification(lastFeedTimestamp, lastFeedAmount) {
     if (notificationTimeoutId) clearTimeout(notificationTimeoutId);
     
@@ -244,7 +242,6 @@ function scheduleNotification(lastFeedTimestamp, lastFeedAmount) {
         return;
     }
 
-    // YENİ MANTIK: Her 40 ml için 1 saat bekleme süresi hesapla
     const hoursToWait = lastFeedAmount / 40;
     const NOTIFICATION_DELAY = hoursToWait * 60 * 60 * 1000;
 
@@ -382,18 +379,26 @@ db.ref("feedings").on("value", snapshot=>{
     allRecords.push({...child.val(), key:child.key});
   });
   
+  // HATA DÜZELTME: Zaman damgası (timestamp) işleme ve sıralama mantığı iyileştirildi.
   allRecords.forEach(r => {
-      if(r.date && r.time && r.date.includes('.') && r.time.includes(':')) {
+      // Eğer veritabanından timestamp gelmiyorsa (eski kayıtlar için), tarih ve saatten hesapla.
+      if (!r.timestamp && r.date && r.time && r.date.includes('.') && r.time.includes(':')) {
         const dateParts = r.date.split('.');
         const timeParts = r.time.split(':');
-        r.timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
-      } else {
-        r.timestamp = 0;
+        // Tarih formatının (GG.AA.YYYY) doğru olduğunu varsayarak
+        if (dateParts.length === 3 && timeParts.length >= 2) {
+            r.timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
+        }
+      }
+      // Geçersiz veya eksik veri durumunda sıralamada sorun olmaması için 0 ata.
+      if (!r.timestamp) {
+          r.timestamp = 0;
       }
   });
+
+  // Kayıtları her zaman en yeniden en eskiye sırala.
   allRecords.sort((a, b) => b.timestamp - a.timestamp); 
   
-  // GÜNCELLENDİ: Bildirim zamanlaması artık buradan yönetiliyor.
   if (allRecords.length > 0) {
       scheduleNotification(allRecords[0].timestamp, allRecords[0].ml);
   } else {
@@ -479,10 +484,12 @@ function renderLog() {
 
           const lastRecordTimestamp = allRecords.length > 0 ? allRecords[0].timestamp : 0;
           
+          // HATA DÜZELTME: Kayda zaman damgasını (timestamp) ekle
           db.ref("feedings").push({
               date: entryDate, 
               time: result.timeInput, 
-              ml: miktar
+              ml: miktar,
+              timestamp: manualEntryTimestamp
           });
 
           if (manualEntryTimestamp > lastRecordTimestamp) {
@@ -598,7 +605,6 @@ document.getElementById('startBtn').addEventListener('click',()=>{
   db.ref("status").set("feeding");
 });
 
-// GÜNCELLENDİ: "Mama Bitti" butonu zaman damgası tutarlılığı için güncellendi
 document.getElementById('stopBtn').addEventListener('click', async ()=>{
   const result = await showModal({
     title: 'Mama Miktarı',
@@ -615,20 +621,17 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
   }
   
   const now = new Date();
-  const dateStr = now.toLocaleDateString("tr-TR");
-  const timeStr = now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const timestamp = now.getTime(); // HATA DÜZELTME: Doğrudan timestamp al
   let miktar = parseInt(result.mlInput) || 0;
-
-  const dateParts = dateStr.split('.');
-  const timeParts = timeStr.split(':');
-  const timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
 
   db.ref("waitStatus").set(timestamp); 
   
+  // HATA DÜZELTME: Kayda zaman damgasını (timestamp) ekle
   db.ref("feedings").push({
-    date: dateStr,
-    time: timeStr,
-    ml: miktar
+    date: now.toLocaleDateString("tr-TR"),
+    time: now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+    ml: miktar,
+    timestamp: timestamp
   });
   
   db.ref("status").set("waiting");
