@@ -13,34 +13,45 @@
     background: linear-gradient(to bottom, #ffffff, #e0f7fa);
     color:#333; text-align:center;
   }
+  /* GÜNCELLENDİ: Daha esnek ve güvenilir başlık yapısı */
   .header {
     display: flex;
-    justify-content: center;
     align-items: center;
+    justify-content: space-between;
+    width: 100%;
     margin: 15px 0 5px 0;
-    position: relative;
-    padding-left: 105px; 
     box-sizing: border-box;
+  }
+  .header-side-left {
+    flex: 1;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .header-side-right {
+    flex: 1;
+  }
+  .header-center {
+    text-align: center;
   }
   #header-icon {
     height: 84px; 
     border-radius: 50%;
-    position: absolute;
-    left: 15px;
-    top: 55%; 
-    transform: translateY(-50%);
+    margin-left: 15px;
   }
-  #title-container {
-    text-align: center;
+  h1 { 
+    font-size:28px; 
+    color:#e53935; 
+    margin: 0; 
+    font-weight: 900; /* Kalınlaştırıldı */
   }
-  h1 { font-size:28px; color:#e53935; margin: 0; }
   #clock { font-size:26px; font-weight:900; margin: 0; }
   #uygarAge {
     font-weight:bold;
+    margin-top: 5px;
     margin-bottom:10px;
     color:#00796b;
-    text-align: center; /* Sağa yaslama kaldırıldı, ortalandı */
-    padding-right: 0;   /* Sağ boşluk kaldırıldı */
+    text-align: center;
+    padding-right: 0;
   }
   /* Büyük butonlar */
   #startBtn, #stopBtn {
@@ -142,11 +153,14 @@
 
   /* MOBİL CİHAZ DÜZELTMESİ */
   @media (max-width: 420px) {
-    .header {
-      padding-left: 90px;
-    }
     #header-icon {
       height: 72px;
+    }
+    .header-side-right {
+        display: none; /* Dar ekranlarda sağ boşluğu kaldır */
+    }
+    .header-center {
+        flex: 2; /* Merkez içeriğin daha fazla yer kaplamasını sağla */
     }
     h1 {
       font-size: 24px;
@@ -162,12 +176,15 @@
 <body>
 
 <div class="header">
-  <img src="https://i.imgur.com/wKpbz6H.jpg" id="header-icon">
-  <div id="title-container">
-    <h1>Uygar Mama Takip</h1>
-    <div id="clock"></div>
-    <div id="uygarAge"></div>
-  </div>
+    <div class="header-side-left">
+        <img src="https://i.imgur.com/wKpbz6H.jpg" id="header-icon">
+    </div>
+    <div class="header-center">
+        <h1>Uygar Mama Takip</h1>
+        <div id="clock"></div>
+        <div id="uygarAge"></div>
+    </div>
+    <div class="header-side-right"></div>
 </div>
 <button id="startBtn">🍼 Mama Başladı</button>
 <button id="stopBtn" disabled>✅ Mama Bitti</button>
