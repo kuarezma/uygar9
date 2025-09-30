@@ -17,7 +17,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: 15px 0;
+    margin: 15px 0 5px 0;
     position: relative;
     padding-left: 85px; /* İkonun kapladığı alanı dengelemek için ve başlığı sağa kaydırmak için güncellendi */
     box-sizing: border-box;
@@ -34,7 +34,7 @@
     text-align: center;
   }
   h1 { font-size:28px; color:#e53935; margin: 0; }
-  #clock { font-size:26px; font-weight:900; margin: 0; }
+  #clock { font-size:26px; font-weight:900; margin: 0 auto 5px; }
   #uygarAge { font-weight:bold; margin-bottom:10px; color:#00796b; }
   /* Büyük butonlar */
   #startBtn, #stopBtn {
@@ -143,9 +143,9 @@
   <img src="https://i.imgur.com/wKpbz6H.jpg" id="header-icon">
   <div id="title-container">
     <h1>Uygar Mama Takip</h1>
-    <div id="clock"></div>
   </div>
 </div>
+<div id="clock"></div>
 <div id="uygarAge"></div>
 <button id="startBtn">🍼 Mama Başladı</button>
 <button id="stopBtn" disabled>✅ Mama Bitti</button>
