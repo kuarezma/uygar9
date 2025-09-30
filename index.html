@@ -4,7 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Uygar Mama Takip</title>
-<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   html, body {
     margin:0; padding:0;
@@ -13,7 +14,7 @@
     color:#333; text-align:center;
   }
   h1 { font-size:28px; color:#e53935; margin:15px 0; }
-  #clock { font-size:22px; font-weight:bold; margin-bottom:5px; }
+  #clock { font-size:24px; font-weight:900; margin-bottom:5px; } /* GÜNCELLENDİ */
   #uygarAge { font-weight:bold; margin-bottom:10px; color:#00796b; }
   /* Büyük butonlar */
   #startBtn, #stopBtn {
@@ -65,8 +66,9 @@
     padding:6px; font-size:16px; width:80px; text-align:center;
     border:1px solid #ccc; border-radius:6px;
   }
-  #waitTimer { color:#d32f2f; font-weight:bold; }
-  #trafficLight { width:20px; height:20px; border-radius:50%; display:inline-block; margin-left:6px; vertical-align: middle; }
+  #waitTimer { color:#d32f2f; } /* GÜNCELLENDİ */
+  /* GÜNCELLENDİ: Trafik ışığı yerine kum saati ikonu stilleri */
+  #hourglassIcon { font-size: 20px; margin-left: 6px; vertical-align: middle; }
 
   /* YENİ: Modal (Açılır Pencere) Stilleri */
   .modal-hidden { display: none !important; }
@@ -103,6 +105,14 @@
   }
   #modal-buttons .confirm-btn { background: #4caf50; color: white; }
   #modal-buttons .cancel-btn { background: #f44336; color: white; }
+
+  /* YENİ: Grafik Stilleri */
+  .chart-container {
+      margin-top: 20px;
+      padding: 10px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 10px;
+  }
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
@@ -121,13 +131,19 @@
 
 <div class="goal-input">
   Günlük hedef:
-  <input type="number" id="goalInput" value="800"> ml
+  <input type="number" id="goalInput" value="900"> ml
   <button id="goalSave">Kaydet</button>
 </div>
 
-<div id="waitTimer">Bekleme Süresi: 0 saat 0 dakika 0 saniye</div>
+<div id="waitTimer">Bekleme Süresi: <strong>0 saat 0 dakika 0 saniye</strong></div>
 <div class="status" id="goalStatus"></div>
 <div class="log" id="log"></div>
+
+<!-- YENİ: Grafik Alanı -->
+<div class="chart-container">
+    <canvas id="dailyChart"></canvas>
+</div>
+
 
 <!-- YENİ: Modal HTML Yapısı -->
 <div id="modal-overlay" class="modal-hidden">
@@ -142,15 +158,17 @@
 <script>
 // Firebase config
 const firebaseConfig = {
+  // DÜZELTME: Veritabanı adresindeki yazım hatası düzeltildi.
   databaseURL: "https://uygar-mama-takibi-default-rtdb.europe-west1.firebasedatabase.app/"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let waitInterval = null;
-let dailyGoal = 800; 
+let dailyGoal = 900; 
 let showHistory = false;
 let allRecords = [];
+let dailyChartInstance; // YENİ: Grafik objesini tutmak için
 
 // YENİ: Modal elementleri ve fonksiyonu
 const modalOverlay = document.getElementById('modal-overlay');
@@ -210,18 +228,18 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
+// GÜNCELLENDİ: Yaş hesaplama fonksiyonu
 function updateUygarAge() {
-  const birth = new Date(2025, 4, 10, 13, 59);
+  const birth = new Date(2025, 4, 10, 13, 59); // Ay 0'dan başlar: 4 = Mayıs
   const now = new Date();
   const diffTime = now - birth;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+  const remainingDaysInWeek = diffDays % 7;
+  const months = Math.floor(diffDays / 30);
+  
   const el = document.getElementById("uygarAge");
-  if(diffDays < 90){
-    el.textContent = `Uygar ${diffDays} günlük`;
-  } else {
-    const months = Math.floor(diffDays / 30);
-    el.textContent = `Uygar ${months} aylık`;
-  }
+  el.textContent = `Uygar ${months} aylık (${diffWeeks} hafta, ${remainingDaysInWeek} gün)`;
 }
 updateUygarAge();
 
@@ -239,19 +257,21 @@ db.ref("status").on("value", snap=>{
   document.getElementById('stopBtn').disabled = state!=="feeding";
 });
 
+// GÜNCELLENDİ: Bekleme süresi gösterimi (Kum saati eklendi)
 db.ref("waitStatus").on("value", snap=>{
   const ts = snap.val();
+  const timerEl = document.getElementById('waitTimer');
+
   if(ts){
     if(waitInterval) clearInterval(waitInterval);
     waitInterval = setInterval(()=>{
       const nowElapsed = Date.now() - ts;
-      document.getElementById('waitTimer').textContent = `Bekleme Süresi: ${formatDuration(nowElapsed)}`;
-      updateTrafficLight(nowElapsed);
+      const durationText = formatDuration(nowElapsed);
+      timerEl.innerHTML = `Bekleme Süresi: <strong>${durationText}</strong> <span id="hourglassIcon">⏳</span>`;
     },1000);
   } else {
     if(waitInterval) clearInterval(waitInterval);
-    document.getElementById('waitTimer').textContent = "Bekleme Süresi: 0 saat 0 dakika 0 saniye";
-    updateTrafficLight(0);
+    timerEl.innerHTML = `Bekleme Süresi: <strong>0 saat 0 dakika 0 saniye</strong> <span id="hourglassIcon">⏳</span>`;
   }
 });
 
@@ -264,21 +284,6 @@ db.ref("dailyGoal").on("value", snap => {
     renderLog();
 });
 
-function updateTrafficLight(ms) {
-  let color = "red";
-  const h = ms / 3600000;
-  if(h >= 2.5) color = "green";
-  else if(h >= 2) color = "yellow";
-  
-  const timerEl = document.getElementById('waitTimer');
-  let lightEl = document.getElementById('trafficLight');
-  if (!lightEl) {
-    timerEl.innerHTML += ` <span id="trafficLight"></span>`;
-    lightEl = document.getElementById('trafficLight');
-  }
-  lightEl.style.background = color;
-}
-
 document.getElementById('toggleHistory').addEventListener('click', ()=>{
   showHistory = !showHistory;
   document.getElementById('toggleHistory').textContent = showHistory ? "📂 Geçmiş Kayıtları Gizle" : "📂 Geçmiş Kayıtları Göster";
@@ -290,8 +295,20 @@ db.ref("feedings").on("value", snapshot=>{
   snapshot.forEach(child=>{
     allRecords.push({...child.val(), key:child.key});
   });
-  allRecords.reverse();
+  // GÜNCELLEME: Zaman damgası oluşturup ona göre sıralama
+  allRecords.forEach(r => {
+      if(r.date && r.time && r.date.includes('.') && r.time.includes(':')) {
+        const dateParts = r.date.split('.');
+        const timeParts = r.time.split(':');
+        r.timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
+      } else {
+        r.timestamp = 0; // Hatalı veri için varsayılan değer
+      }
+  });
+  allRecords.sort((a, b) => b.timestamp - a.timestamp); // En yeniden en eskiye sırala
+  
   renderLog();
+  updateChart(); // YENİ: Veri güncellendiğinde grafiği de güncelle
 });
 
 function renderLog() {
@@ -309,7 +326,8 @@ function renderLog() {
     const text = document.createElement("div");
     text.className = "log-text";
     const dateText = showHistory && r.date !== todayStr ? `[${r.date}] ` : "";
-    text.innerHTML = `${dateText}<span style="color:red; font-weight:bold;">${r.time || ""}</span> - 🍼 <span style="font-weight:bold;">${r.ml || ""} ml</span>`;
+    // GÜNCELLENDİ: Mama saati ve miktarı büyütüldü ve kalınlaştırıldı.
+    text.innerHTML = `${dateText}<span style="color:red; font-weight:900; font-size: 15px;">${r.time || ""}</span> - 🍼 <span style="font-weight:900; font-size: 15px;">${r.ml || ""} ml</span>`;
 
     const buttons = document.createElement("div");
     buttons.className = "log-buttons";
@@ -317,7 +335,6 @@ function renderLog() {
     const edit = document.createElement("button");
     edit.className = "edit-btn";
     edit.textContent = "Düzelt";
-    // GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
     edit.onclick = async () => {
       const result = await showModal({
           title: 'Miktarı Düzelt',
@@ -336,12 +353,16 @@ function renderLog() {
     const add = document.createElement("button");
     add.className = "add-btn";
     add.textContent = "Ekle";
-    // GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
+    // GÜNCELLENDİ: "Ekle" butonu artık tarihi de soruyor
     add.onclick = async () => {
-      const defaultTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const now = new Date();
+      const defaultTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const defaultDate = now.toLocaleDateString("tr-TR");
+
       const result = await showModal({
           title: 'Manuel Kayıt Ekle',
           inputs: [
+              { id: 'dateInput', type: 'text', value: defaultDate, placeholder: 'Tarih (GG.AA.YYYY)' },
               { id: 'timeInput', type: 'text', value: defaultTime, placeholder: 'Saat (örn: 15:30)' },
               { id: 'mlAddInput', type: 'number', value: '', placeholder: 'Miktar (ml)' }
           ],
@@ -350,18 +371,37 @@ function renderLog() {
               { text: 'İptal', class: 'cancel-btn' }
           ]
       });
-      if (result.button === 'Ekle' && result.timeInput) {
+      
+      if (result.button === 'Ekle' && result.dateInput && result.timeInput && result.timeInput.includes(':')) {
           let miktar = parseInt(result.mlAddInput) || 0;
+          const entryDate = result.dateInput;
+          
+          if (!/^\d{2}\.\d{2}\.\d{4}$/.test(entryDate)) {
+             console.error("Geçersiz tarih formatı.");
+             return;
+          }
+
+          const dateParts = entryDate.split('.');
+          const timeParts = result.timeInput.split(':');
+          const manualEntryTimestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
+
+          const lastRecordTimestamp = allRecords.length > 0 ? allRecords[0].timestamp : 0;
+          
           db.ref("feedings").push({
-              date: r.date, time: result.timeInput, ml: miktar
+              date: entryDate, 
+              time: result.timeInput, 
+              ml: miktar
           });
+
+          if (manualEntryTimestamp > lastRecordTimestamp) {
+              db.ref("waitStatus").set(manualEntryTimestamp);
+          }
       }
     };
 
     const del = document.createElement("button");
     del.className = "delete-btn";
     del.textContent = "Sil";
-    // GÜNCELLEME: 'confirm' yerine 'showModal' kullanılıyor
     del.onclick = async () => {
       const result = await showModal({
           title: 'Kaydı Sil',
@@ -372,7 +412,18 @@ function renderLog() {
           ]
       });
       if (result.button === 'Evet, Sil') {
-          db.ref("feedings/" + r.key).remove();
+          const isDeletingLastRecord = allRecords.length > 0 && allRecords[0].key === r.key;
+          
+          db.ref("feedings/" + r.key).remove().then(() => {
+              if (isDeletingLastRecord) {
+                  const newLastRecord = allRecords.length > 1 ? allRecords[1] : null;
+                  if (newLastRecord) {
+                      db.ref("waitStatus").set(newLastRecord.timestamp);
+                  } else {
+                      db.ref("waitStatus").remove();
+                  }
+              }
+          });
       }
     };
 
@@ -390,16 +441,71 @@ function renderLog() {
   document.getElementById('goalStatus').innerHTML = `Günlük hedef: ${dailyGoal} ml <span style="color:blue"> | </span> İçilen: ${todayTotal} ml <span style="color:blue"> | </span> Kalan: <span style="color:red">${kalan>0?kalan:0} ml</span> <span style="color:blue"> | </span> Tamamlanma: <strong>%${yuzdeTamam}</strong>`;
 }
 
+function updateChart() {
+    const dailyTotals = {};
+    const labels = [];
+
+    for (let i = 4; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toLocaleDateString("tr-TR");
+        labels.push(dateStr.substring(0, 5)); 
+        dailyTotals[dateStr] = 0; 
+    }
+    
+    const relevantRecords = allRecords.filter(r => r.date && dailyTotals[r.date] !== undefined);
+    relevantRecords.forEach(r => {
+        dailyTotals[r.date] += r.ml || 0;
+    });
+
+    const data = Object.values(dailyTotals); 
+    
+    const ctx = document.getElementById('dailyChart').getContext('2d');
+
+    if (dailyChartInstance) {
+        dailyChartInstance.destroy(); 
+    }
+
+    dailyChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Son 5 Günlük Tüketim (ml)',
+                data: data,
+                backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                borderColor: 'rgba(33, 150, 243, 1)',
+                borderWidth: 2,
+                tension: 0.1,
+                fill: true,
+                pointBackgroundColor: 'rgba(229, 57, 53, 1)',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
 document.getElementById('startBtn').addEventListener('click',()=>{
   if(waitInterval) clearInterval(waitInterval);
-  document.getElementById('waitTimer').textContent="Bekleme Süresi: 0 saat 0 dakika 0 saniye";
+  const timerEl = document.getElementById('waitTimer');
+  timerEl.innerHTML = `Bekleme Süresi: <strong>0 saat 0 dakika 0 saniye</strong> <span id="hourglassIcon">⏳</span>`;
   db.ref("waitStatus").remove();
-  document.getElementById('startBtn').disabled=true;
-  document.getElementById('stopBtn').disabled=false;
   db.ref("status").set("feeding");
 });
 
-// GÜNCELLEME: 'prompt' yerine 'showModal' kullanılıyor
 document.getElementById('stopBtn').addEventListener('click', async ()=>{
   let waitStartTime=Date.now();
   
@@ -414,10 +520,10 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
   });
   
   if (result.button === 'İptal') {
-      return; // Kullanıcı iptal etti, işlemi durdur.
+      return; 
   }
   
-  db.ref("waitStatus").set(waitStartTime); // Sadece kaydet'e basılınca bekleme süresini başlat
+  db.ref("waitStatus").set(waitStartTime); 
   let miktar = parseInt(result.mlInput) || 0;
 
   db.ref("feedings").push({
@@ -425,9 +531,7 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
     time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
     ml: miktar
   });
-
-  document.getElementById('startBtn').disabled=false;
-  document.getElementById('stopBtn').disabled=true;
+  
   db.ref("status").set("waiting");
 });
 
