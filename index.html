@@ -27,7 +27,7 @@
   #startBtn { background:#ff9800; color:#fff; }
   #stopBtn { background:#e53935; color:#fff; }
   /* Diğer butonlar küçük */
-  #goalSave, #toggleHistory, .edit-btn, .delete-btn, .add-btn {
+  #goalSave, #toggleHistory, #notificationBtn, .edit-btn, .delete-btn, .add-btn {
     padding:6px 8px; margin:2px;
     font-size:12px; border:none; border-radius:6px;
     cursor:pointer; font-weight:bold;
@@ -38,6 +38,7 @@
   button:hover:enabled { transform: scale(1.05); }
   #goalSave { background:#8e24aa; color:#fff; }
   #toggleHistory { background:#4caf50; color:#fff; }
+  #notificationBtn { background:#03a9f4; color:#fff; }
   .log {
     max-height:300px; overflow-y:auto;
     background: rgba(0,0,0,0.05);
@@ -127,6 +128,7 @@
 <button id="startBtn">🍼 Mama Başladı</button>
 <button id="stopBtn" disabled>✅ Mama Bitti</button>
 <button id="toggleHistory">📂 Geçmiş Kayıtları Göster</button>
+<button id="notificationBtn">🔔 Bildirimleri Aç</button>
 
 <div class="goal-input">
   Günlük hedef:
@@ -167,6 +169,7 @@ let dailyGoal = 900;
 let showHistory = false;
 let allRecords = [];
 let dailyChartInstance; 
+let notificationTimeoutId = null;
 
 // Modal elementleri ve fonksiyonu
 const modalOverlay = document.getElementById('modal-overlay');
@@ -174,6 +177,71 @@ const modalTitle = document.getElementById('modal-title');
 const modalText = document.getElementById('modal-text');
 const modalInputContainer = document.getElementById('modal-input-container');
 const modalButtons = document.getElementById('modal-buttons');
+const notificationBtn = document.getElementById('notificationBtn');
+
+// Bildirim Fonksiyonları
+function updateNotificationButton() {
+    if (!('Notification' in window)) {
+        notificationBtn.textContent = '🔕 Desteklenmiyor';
+        notificationBtn.disabled = true;
+        return;
+    }
+    switch(Notification.permission) {
+        case 'granted':
+            notificationBtn.textContent = '🔔 Bildirimler Açık';
+            notificationBtn.style.background = '#4caf50';
+            break;
+        case 'denied':
+            notificationBtn.textContent = '🔕 Bildirim Engelli';
+            notificationBtn.disabled = true;
+            break;
+        default:
+            notificationBtn.textContent = '🔔 Bildirimleri Aç';
+            notificationBtn.style.background = '#03a9f4';
+    }
+}
+
+function requestNotificationPermission() {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(permission => {
+        updateNotificationButton();
+        if (permission === 'granted') {
+            // İzin verildiğinde, mevcut son kayda göre bildirimi hemen zamanla
+            if (allRecords.length > 0) {
+                scheduleNotification(allRecords[0].timestamp, allRecords[0].ml);
+            }
+        }
+    });
+}
+
+// GÜNCELLENDİ: Bildirim Zamanlama Mantığı
+function scheduleNotification(lastFeedTimestamp, lastFeedAmount) {
+    if (notificationTimeoutId) clearTimeout(notificationTimeoutId);
+    
+    if (Notification.permission !== 'granted' || !lastFeedTimestamp || !lastFeedAmount || lastFeedAmount <= 0) {
+        return;
+    }
+
+    // YENİ MANTIK: Her 40 ml için 1 saat bekleme süresi hesapla
+    const hoursToWait = lastFeedAmount / 40;
+    const NOTIFICATION_DELAY = hoursToWait * 60 * 60 * 1000;
+
+    const notificationTime = lastFeedTimestamp + NOTIFICATION_DELAY;
+    const delay = notificationTime - Date.now();
+
+    if (delay > 0) {
+        notificationTimeoutId = setTimeout(() => {
+            new Notification('Uygar Mama Zamanı!', {
+                body: `Son mama (${lastFeedAmount} ml) üzerinden yaklaşık ${hoursToWait.toFixed(1).replace('.', ',')} saat geçti.`,
+                icon: 'https://i.imgur.com/wKpbz6H.jpg'
+            });
+        }, delay);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', updateNotificationButton);
+notificationBtn.addEventListener('click', requestNotificationPermission);
+
 
 function showModal({ title, text, inputs = [], buttons = [] }) {
     return new Promise((resolve) => {
@@ -227,7 +295,7 @@ setInterval(updateClock, 1000);
 updateClock();
 
 function updateUygarAge() {
-  const birth = new Date(2025, 4, 10, 13, 59); // Ay 0'dan başlar: 4 = Mayıs
+  const birth = new Date(2025, 4, 10, 13, 59);
   const now = new Date();
   const diffTime = now - birth;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -302,6 +370,13 @@ db.ref("feedings").on("value", snapshot=>{
       }
   });
   allRecords.sort((a, b) => b.timestamp - a.timestamp); 
+  
+  // GÜNCELLENDİ: Bildirim zamanlaması artık buradan yönetiliyor.
+  if (allRecords.length > 0) {
+      scheduleNotification(allRecords[0].timestamp, allRecords[0].ml);
+  } else {
+      scheduleNotification(null, 0); // Kayıt yoksa bekleyen bildirimi iptal et
+  }
   
   renderLog();
   updateChart(); 
@@ -501,9 +576,8 @@ document.getElementById('startBtn').addEventListener('click',()=>{
   db.ref("status").set("feeding");
 });
 
+// GÜNCELLENDİ: "Mama Bitti" butonu zaman damgası tutarlılığı için güncellendi
 document.getElementById('stopBtn').addEventListener('click', async ()=>{
-  let waitStartTime=Date.now();
-  
   const result = await showModal({
     title: 'Mama Miktarı',
     text: 'Uygar kaç ml içti?',
@@ -518,12 +592,20 @@ document.getElementById('stopBtn').addEventListener('click', async ()=>{
       return; 
   }
   
-  db.ref("waitStatus").set(waitStartTime); 
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("tr-TR");
+  const timeStr = now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   let miktar = parseInt(result.mlInput) || 0;
 
+  const dateParts = dateStr.split('.');
+  const timeParts = timeStr.split(':');
+  const timestamp = new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
+
+  db.ref("waitStatus").set(timestamp); 
+  
   db.ref("feedings").push({
-    date: new Date().toLocaleDateString("tr-TR"),
-    time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+    date: dateStr,
+    time: timeStr,
     ml: miktar
   });
   
